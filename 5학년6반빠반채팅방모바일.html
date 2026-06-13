@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>5학년 6반 빠반 - 모바일 버전</title>
+<style>
+/* 모바일 최적화 기본 설정 */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  background: #b2c7da;
+  overflow: hidden; /* 전체 페이지 스크롤 방지 */
+}
+
+/* 앱 전체를 감싸는 컨테이너 (100dvh로 모바일 브라우저 주소창 높이 변화 대응) */
+#appContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* 상단 영역 (고정) */
+.header { background: #fff; padding: 12px; text-align: center; font-size: 18px; font-weight: bold; flex-shrink: 0; }
+.top { background: #fff; padding: 8px 10px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+input { font-size: 16px; /* iOS 자동 확대 방지 */ box-sizing: border-box; }
+#nameInput { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+
+/* 관리자 영역 */
+.adminArea { background: #fff; padding: 8px 10px; flex-shrink: 0; border-bottom: 1px solid #eee; }
+#adminPanel { display: none; margin-top: 8px; font-size: 13px; }
+#adminPanel input { width: calc(100% - 20px); padding: 8px; margin-bottom: 5px; border: 1px solid #ccc; border-radius: 4px; }
+#adminPanel button { margin-bottom: 5px; font-size: 12px; padding: 6px 10px; }
+
+/* 채팅 영역 (유동적 크기 할당) */
+#chatBox {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+  -webkit-overflow-scrolling: touch; /* iOS 부드러운 스크롤 */
+}
+
+.message { margin-bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; }
+.name { font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #333; }
+.bubble { 
+  background: #fff; 
+  padding: 10px 14px; 
+  border-radius: 14px; 
+  max-width: 80%; 
+  word-break: break-all; /* 긴 단어 줄바꿈 */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.time { font-size: 10px; color: #666; margin-top: 4px; padding-left: 4px; }
+.notice { text-align: center; color: #555; margin: 15px 0; font-size: 13px; background: rgba(0,0,0,0.05); padding: 5px; border-radius: 10px;}
+
+/* 하단 입력 영역 (고정) */
+.inputWrap {
+  background: #fff;
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom, 10px); /* 아이폰 X 이상 하단 여백 보호 */
+}
+#messageInput { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
+button { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+.sendBtn { background: #ffeb3b; border-radius: 20px; color: #333; }
+.adminBtn { background: #90caf9; font-size: 12px; padding: 6px 10px; }
+.danger { background: #e53935; color: #fff; }
+
+/* === 게임 팝업 모바일 CSS === */
+.gamePopup {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 99999; backdrop-filter: blur(2px);
+}
+.gameBox {
+  background: #fff; padding: 20px; border-radius: 12px; text-align: center; width: 90%; max-width: 350px; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+/* 지뢰찾기 모바일 반응형 */
+#mineBoard { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; width: 100%; aspect-ratio: 1; margin-bottom: 10px; }
+#mineBoard button { width: 100%; height: 100%; padding: 0; font-size: 16px; border: 1px solid #ccc; background: #eee; }
+
+/* 테트리스 터치 최적화 */
+#tetrisCanvas { width: 100%; max-width: 200px; height: auto; border: 2px solid #333; background: #f4f4f4; border-radius: 4px; touch-action: none; }
+.tetris-controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 15px; }
+.tetris-controls button {
+  padding: 15px 0; font-size: 20px; background: #e0e0e0; border-radius: 8px; user-select: none; touch-action: manipulation; box-shadow: 0 2px 0 #999; margin-bottom: 5px;
+}
+.tetris-controls button:active { background: #ccc; box-shadow: none; transform: translateY(2px); }
+
+/* 틱택토 모바일 반응형 */
+#ticBoard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; aspect-ratio: 1; width: 100%; max-width: 260px; margin: 0 auto 15px; }
+#ticBoard button { width: 100%; height: 100%; font-size: 40px; font-weight: bold; background: #eee; border: none; border-radius: 8px; padding: 0; }
+</style>
+</head>
+<body>
+
+<div id="appContainer">
+  <div class="header">🎉 5학년 6반 빠반 🎉</div>
+
+  <div class="top">
+    <input id="nameInput" placeholder="이름을 입력하세요 (ex. 홍길동)">
+  </div>
+
+  <div class="adminArea">
+    <button class="adminBtn" onclick="adminLogin()">관리자 모드</button>
+    <div id="adminPanel">
+      <p style="margin: 5px 0;">👑 <b>관리자 로그인됨</b></p>
+      <input id="banName" placeholder="차단할 이름">
+      <div style="display:flex; gap:5px;">
+        <button style="flex:1;" onclick="banUser()">차단</button>
+        <button style="flex:1;" onclick="unbanUser()">차단해제</button>
+      </div>
+      <button style="width:100%; margin-top:5px;" onclick="toggleLock()">채팅방 잠금/해제</button>
+      <input id="noticeText" placeholder="공지 입력" style="margin-top:5px;">
+      <button style="width:100%; background:#4CAF50; color:#fff;" onclick="sendNotice()">공지 전송</button>
+      <button style="width:100%; margin-top:5px;" class="danger" onclick="clearAllMessages()">전체 채팅 삭제</button>
+    </div>
+  </div>
+
+  <div id="chatBox">
+    <div class="notice">채팅방에 오신 것을 환영합니다.<br>명령어: /게임1 (지뢰) | /게임2 (테트리스) | /게임3 (틱택토)</div>
+  </div>
+
+  <div class="inputWrap">
+    <input id="messageInput" placeholder="메시지를 입력하세요">
+    <button class="sendBtn" onclick="sendMessage()">전송</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, push, onChildAdded, remove, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+ apiKey:"AIzaSyCmtWhBsPRrrYnsjh2ig-XkVCuO2HbtZaQ",
+ authDomain:"class56-bdf85.firebaseapp.com",
+ databaseURL:"https://class56-bdf85-default-rtdb.asia-southeast1.firebasedatabase.app",
+ projectId:"class56-bdf85",
+ storageBucket:"class56-bdf85.firebasestorage.app",
+ messagingSenderId:"302150895662",
+ appId:"1:302150895662:web:d6231e6fc8ceb3155e77bf"
+};
+
+const ADMIN_PASSWORD = "13275";
+let isAdmin = false;
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const chatBox = document.getElementById("chatBox");
+
+const savedName = localStorage.getItem("chatName");
+if(savedName) document.getElementById("nameInput").value = savedName;
+
+window.adminLogin = function(){
+ const pw = prompt("관리자 비밀번호 입력");
+ if(pw === ADMIN_PASSWORD){
+   isAdmin = true;
+   document.getElementById("adminPanel").style.display = "block";
+   alert("관리자 로그인 성공");
+ } else {
+   alert("비밀번호가 틀렸습니다.");
+ }
+}
+
+window.clearAllMessages = async function(){
+ if(confirm("모든 채팅을 삭제할까요?")){
+   await remove(ref(db,"messages"));
+   chatBox.innerHTML = '<div class="notice">채팅이 삭제되었습니다.</div>';
+ }
+}
+
+window.banUser = async function(){
+ const name=document.getElementById('banName').value.trim();
+ if(!name) return alert('이름 입력');
+ await set(ref(db,'blockedUsers/'+name), true);
+ alert(name+' 차단 완료');
+}
+
+window.unbanUser = async function(){
+ const name=document.getElementById('banName').value.trim();
+ if(!name) return alert('이름 입력');
+ await remove(ref(db,'blockedUsers/'+name));
+ alert(name+' 차단 해제');
+}
+
+window.toggleLock = async function(){
+ const snap = await get(ref(db,'chatLocked'));
+ const locked = snap.exists() ? snap.val() : false;
+ await set(ref(db,'chatLocked'), !locked);
+ alert(!locked ? '채팅방 잠금 설정됨' : '채팅방 잠금 해제됨');
+}
+
+window.sendNotice = async function(){
+ if(!isAdmin) return;
+ const txt = document.getElementById('noticeText').value.trim();
+ if(!txt) return;
+ push(ref(db,'messages'),{
+   name:'👑 관리자',
+   message:'📢 '+txt,
+   time:new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+   notice:true
+ });
+ document.getElementById('noticeText').value = "";
+}
+
+window.sendMessage = async function(){
+ const name = document.getElementById("nameInput").value.trim();
+ const message = document.getElementById("messageInput").value.trim();
+
+ if(!name || !message){
+   alert("이름과 메시지를 입력하세요.");
+   return;
+ }
+
+ if(name==='개발자' && !isAdmin){
+   alert('개발자 닉네임은 관리자만 사용할 수 있습니다.');
+   return;
+ }
+ const lockSnap = await get(ref(db,'chatLocked'));
+ if(lockSnap.exists() && lockSnap.val()===true && !isAdmin){
+   alert('현재 채팅방이 잠겨 있습니다.');
+   return;
+ }
+ const blocked = await get(ref(db,'blockedUsers/'+name));
+ if(blocked.exists()){
+   alert('차단된 사용자입니다.');
+   return;
+ }
+
+ if(message === "/게임1"){ openMinesweeper(); document.getElementById("messageInput").value=""; return; }
+ if(message === "/게임2"){ openTetris(); document.getElementById("messageInput").value=""; return; }
+ if(message === "/게임3"){ openTicTacToe(); document.getElementById("messageInput").value=""; return; }
+
+ localStorage.setItem("chatName", name);
+
+ push(ref(db,"messages"),{
+   name:name,
+   message:message,
+   time:new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+ });
+
+ document.getElementById("messageInput").value = "";
+ // 입력 후 포커스 유지 (모바일 타이핑 편의)
+ document.getElementById("messageInput").focus(); 
+}
+
+document.getElementById("messageInput").addEventListener("keydown",(e)=>{
+ if(e.key==="Enter") {
+   e.preventDefault();
+   sendMessage();
+ }
+});
+
+onChildAdded(ref(db,"messages"), (snapshot)=>{
+ const data = snapshot.val(); const msgId=snapshot.key;
+
+ const div = document.createElement("div");
+ div.className = "message";
+ 
+ // 내가 보낸 메시지인지 확인하여 스타일 변경
+ const isMyMessage = (data.name === document.getElementById("nameInput").value.trim());
+ if(isMyMessage) {
+   div.style.alignItems = "flex-end";
+ }
+
+ div.innerHTML = `
+   <div class="name" style="${isMyMessage ? 'display:none;' : ''}">${data.name}</div>
+   <div style="display:flex; align-items:flex-end; gap:5px; flex-direction:${isMyMessage ? 'row-reverse' : 'row'};">
+     <div class="bubble" style="background:${isMyMessage ? '#ffeb3b' : '#fff'};">${data.message}</div>
+     <div class="time">${data.time || ""}</div>
+   </div>
+ `;
+
+ if(isAdmin){
+   const del=document.createElement('button');
+   del.textContent='x';
+   del.style.cssText = "margin-left:5px; background:red; color:white; padding:2px 6px; font-size:10px; border-radius:4px;";
+   del.onclick=()=>remove(ref(db,'messages/'+msgId));
+   div.appendChild(del);
+ }
+ chatBox.appendChild(div);
+ // 스크롤을 항상 최하단으로 부드럽게
+ chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
+});
+
+
+// === 게임1: 지뢰찾기 로직 (모바일 리사이징 적용) ===
+window.openMinesweeper = function(){
+ const size = 8;
+ const mines = 10;
+
+ const wrap = document.createElement("div");
+ wrap.className = "gamePopup";
+
+ wrap.innerHTML = `
+ <div class="gameBox">
+   <h2 style="margin:0 0 15px 0;">💣 지뢰찾기</h2>
+   <div id="mineBoard"></div>
+   <button id="closeMine" style="width:100%; padding:12px; background:#ddd; font-weight:bold;">닫기</button>
+ </div>`;
+
+ document.body.appendChild(wrap);
+ const board = wrap.querySelector("#mineBoard");
+
+ const data=[];
+ for(let y=0;y<size;y++){
+   data[y]=[];
+   for(let x=0;x<size;x++) data[y][x]={mine:false,open:false,count:0};
+ }
+
+ let placed=0;
+ while(placed<mines){
+   const x=Math.floor(Math.random()*size);
+   const y=Math.floor(Math.random()*size);
+   if(!data[y][x].mine){data[y][x].mine=true;placed++;}
+ }
+
+ for(let y=0;y<size;y++){
+   for(let x=0;x<size;x++){
+     if(data[y][x].mine) continue;
+     let c=0;
+     for(let dy=-1;dy<=1;dy++){
+       for(let dx=-1;dx<=1;dx++){
+         const nx=x+dx, ny=y+dy;
+         if(nx>=0&&ny>=0&&nx<size&&ny<size&&data[ny][nx].mine) c++;
+       }
+     }
+     data[y][x].count=c;
+   }
+ }
+
+ function checkWin(){
+   let opened=0;
+   for(let y=0;y<size;y++) for(let x=0;x<size;x++) if(data[y][x].open) opened++;
+   if(opened===size*size-mines) alert("🎉 승리!");
+ }
+
+ function reveal(x,y){
+   const cell=data[y][x];
+   if(cell.open) return;
+   cell.open=true;
+
+   const btn=board.children[y*size+x];
+
+   if(cell.mine){
+     btn.textContent="💣";
+     alert("게임 오버!");
+     return;
+   }
+
+   btn.disabled=true;
+   btn.style.background = "#fff";
+   btn.textContent=cell.count===0?"":cell.count;
+   // 숫자에 따라 색상 다르게 (디테일 추가)
+   const colors = ['','blue','green','red','purple','maroon','turquoise','black','gray'];
+   btn.style.color = colors[cell.count];
+
+   if(cell.count===0){
+     for(let dy=-1;dy<=1;dy++){
+       for(let dx=-1;dx<=1;dx++){
+         const nx=x+dx, ny=y+dy;
+         if(nx>=0&&ny>=0&&nx<size&&ny<size) reveal(nx,ny);
+       }
+     }
+   }
+   checkWin();
+ }
+
+ for(let y=0;y<size;y++){
+   for(let x=0;x<size;x++){
+     const b=document.createElement("button");
+     b.onclick=()=>reveal(x,y);
+     board.appendChild(b);
+   }
+ }
+
+ wrap.querySelector("#closeMine").onclick=()=>wrap.remove();
+}
+
+
+// === 게임2: 테트리스 로직 (모바일 버튼 개선) ===
+window.openTetris = function() {
+  const wrap = document.createElement('div');
+  wrap.className = 'gamePopup';
+  wrap.innerHTML = `
+  <div class="gameBox">
+    <h2 style="margin:0 0 10px 0;">🟦 테트리스</h2>
+    <div style="margin-bottom:10px; font-size:14px;">점수: <span id="score">0</span> | 최고: <span id="best">${localStorage.getItem('tetrisBest')||0}</span></div>
+    <canvas id="tetrisCanvas" width="200" height="400"></canvas>
+    
+    <div class="tetris-controls">
+      <button id="leftBtn">⬅️</button>
+      <button id="downBtn">⬇️</button>
+      <button id="rightBtn">➡️</button>
+      <button id="rotBtn">🔄</button>
+    </div>
+    <button id="closeTet" style="width:100%; padding:12px; background:#ddd; color:#333; font-weight:bold; margin-top:10px;">게임 종료</button>
+  </div>`;
+  
+  document.body.appendChild(wrap);
+
+  const cvs = wrap.querySelector('#tetrisCanvas');
+  const ctx = cvs.getContext('2d');
+  const S = 20, COLS = 10, ROWS = 20; // 캔버스 크기를 200x400으로 줄여 모바일에 최적화
+  let score = 0;
+
+  let board = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+
+  const TETROMINOES = [
+    [], 
+    [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]],
+    [[2,0,0], [2,2,2], [0,0,0]],
+    [[0,0,3], [3,3,3], [0,0,0]],
+    [[4,4], [4,4]],
+    [[0,5,5], [5,5,0], [0,0,0]],
+    [[0,6,0], [6,6,6], [0,0,0]],
+    [[7,7,0], [0,7,7], [0,0,0]]
+  ];
+  const COLORS = [null, '#00FFFF', '#0000FF', '#FFA500', '#FFFF00', '#008000', '#800080', '#FF0000'];
+
+  let shape, x, y;
+
+  function spawn() {
+    const type = Math.floor(Math.random() * 7) + 1;
+    shape = TETROMINOES[type];
+    x = 3; y = 0;
+    
+    if(collide(0, 0, shape)) {
+      alert("💥 게임 오버! 최종 점수: " + score);
+      board = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+      score = 0;
+      document.getElementById('score').textContent = score;
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 200, 400);
+    for(let r=0; r<ROWS; r++) {
+      for(let c=0; c<COLS; c++) {
+        if(board[r][c]) {
+          ctx.fillStyle = COLORS[board[r][c]];
+          ctx.fillRect(c*S, r*S, S, S);
+          ctx.strokeStyle = '#000';
+          ctx.strokeRect(c*S, r*S, S, S);
+        } else {
+          ctx.strokeStyle = '#e0e0e0';
+          ctx.strokeRect(c*S, r*S, S, S);
+        }
+      }
+    }
+    for(let r=0; r<shape.length; r++) {
+      for(let c=0; c<shape[r].length; c++) {
+        if(shape[r][c]) {
+          ctx.fillStyle = COLORS[shape[r][c]];
+          ctx.fillRect((x+c)*S, (y+r)*S, S, S);
+          ctx.strokeStyle = '#000';
+          ctx.strokeRect((x+c)*S, (y+r)*S, S, S);
+        }
+      }
+    }
+  }
+
+  function collide(dx, dy, targetShape) {
+    for(let r=0; r<targetShape.length; r++) {
+      for(let c=0; c<targetShape[r].length; c++) {
+        if(!targetShape[r][c]) continue;
+        let nx = x + c + dx;
+        let ny = y + r + dy;
+        if(nx < 0 || nx >= COLS || ny >= ROWS || (ny >= 0 && board[ny][nx])) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function merge() {
+    for(let r=0; r<shape.length; r++) {
+      for(let c=0; c<shape[r].length; c++) {
+        if(shape[r][c] && y+r >= 0) {
+          board[y+r][x+c] = shape[r][c];
+        }
+      }
+    }
+    for(let r = ROWS - 1; r >= 0; r--) {
+      if(board[r].every(val => val !== 0)) {
+        board.splice(r, 1);
+        board.unshift(Array(COLS).fill(0));
+        score += 100;
+        document.getElementById('score').textContent = score;
+        r++; 
+      }
+    }
+    saveBest();
+  }
+
+  function saveBest() {
+    const best = Math.max(score, Number(localStorage.getItem('tetrisBest')||0));
+    localStorage.setItem('tetrisBest', best);
+    const b = document.getElementById('best'); if(b) b.textContent = best;
+  }
+
+  function tick() {
+    if(!collide(0, 1, shape)) y++;
+    else { merge(); spawn(); }
+    draw();
+  }
+
+  spawn();
+  const timer = setInterval(tick, 500);
+
+  // 모바일 터치 이벤트 최적화
+  const bindInput = (id, action) => {
+    const btn = wrap.querySelector(id);
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); action(); }, {passive: false});
+    btn.addEventListener('mousedown', (e) => { e.preventDefault(); action(); });
+  };
+
+  bindInput('#leftBtn', () => { if(!collide(-1, 0, shape)) x--; draw(); });
+  bindInput('#rightBtn', () => { if(!collide(1, 0, shape)) x++; draw(); });
+  bindInput('#downBtn', () => { if(!collide(0, 1, shape)) y++; draw(); });
+  bindInput('#rotBtn', () => {
+    const rotated = shape[0].map((_,i)=>shape.map(r=>r[i]).reverse());
+    if(!collide(0, 0, rotated)) shape = rotated;
+    draw();
+  });
+  
+  const handleKey = (e) => {
+    if(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
+    if(e.key === "ArrowLeft") { if(!collide(-1, 0, shape)) x--; draw(); }
+    if(e.key === "ArrowRight") { if(!collide(1, 0, shape)) x++; draw(); }
+    if(e.key === "ArrowDown") { if(!collide(0, 1, shape)) y++; draw(); }
+    if(e.key === "ArrowUp") {
+      const rotated = shape[0].map((_,i)=>shape.map(r=>r[i]).reverse());
+      if(!collide(0, 0, rotated)) shape = rotated;
+      draw();
+    }
+  };
+  window.addEventListener("keydown", handleKey);
+
+  wrap.querySelector('#closeTet').onclick = () => { 
+    clearInterval(timer); 
+    window.removeEventListener("keydown", handleKey);
+    saveBest(); 
+    wrap.remove(); 
+  };
+}
+
+
+// === 게임3: 틱택토 로직 (모바일 반응형) ===
+window.openTicTacToe = function() {
+  const wrap = document.createElement("div");
+  wrap.className = "gamePopup";
+
+  wrap.innerHTML = `
+  <div class="gameBox">
+    <h2 style="margin:0 0 10px 0;">⭕ 틱택토 ❌</h2>
+    <div id="turnDisplay" style="margin-bottom:15px; font-weight:bold; font-size:16px;">X의 차례입니다</div>
+    <div id="ticBoard"></div>
+    <div style="display:flex; gap:10px;">
+      <button id="restartTic" style="flex:1; background:#4CAF50; color:white; padding:12px;">다시 시작</button>
+      <button id="closeTic" style="flex:1; background:#ddd; color:#333; padding:12px;">닫기</button>
+    </div>
+  </div>`;
+
+  document.body.appendChild(wrap);
+  
+  const boardElement = wrap.querySelector("#ticBoard");
+  const turnDisplay = wrap.querySelector("#turnDisplay");
+
+  let boardData = Array(9).fill(null);
+  let currentPlayer = "X";
+  let gameActive = true;
+
+  const winConditions = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+
+  function checkWin() {
+    let roundWon = false;
+    for (let i = 0; i < winConditions.length; i++) {
+      const [a, b, c] = winConditions[i];
+      if (boardData[a] && boardData[a] === boardData[b] && boardData[a] === boardData[c]) {
+        roundWon = true;
+        break;
+      }
+    }
+
+    if (roundWon) {
+      turnDisplay.textContent = `🎉 ${currentPlayer} 승리!`;
+      turnDisplay.style.color = "#e53935";
+      gameActive = false;
+      return;
+    }
+
+    if (!boardData.includes(null)) {
+      turnDisplay.textContent = "🤝 무승부입니다!";
+      turnDisplay.style.color = "#333";
+      gameActive = false;
+      return;
+    }
+
+    currentPlayer = currentPlayer === "X" ? "O" : "X";
+    turnDisplay.textContent = `${currentPlayer}의 차례입니다`;
+  }
+
+  function handleCellClick(e, index) {
+    if (!gameActive || boardData[index]) return;
+    
+    boardData[index] = currentPlayer;
+    e.target.textContent = currentPlayer;
+    e.target.style.color = currentPlayer === "X" ? "#e53935" : "#1e88e5";
+    
+    checkWin();
+  }
+
+  function initBoard() {
+    boardElement.innerHTML = "";
+    boardData = Array(9).fill(null);
+    currentPlayer = "X";
+    gameActive = true;
+    turnDisplay.textContent = `${currentPlayer}의 차례입니다`;
+    turnDisplay.style.color = "#333";
+
+    for (let i = 0; i < 9; i++) {
+      const cell = document.createElement("button");
+      cell.onclick = (e) => handleCellClick(e, i);
+      boardElement.appendChild(cell);
+    }
+  }
+
+  initBoard();
+
+  wrap.querySelector("#restartTic").onclick = initBoard;
+  wrap.querySelector("#closeTic").onclick = () => wrap.remove();
+}
+</script>
+
+</body>
+</html>
