@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>젤다의 전설: 울트라핸드 시뮬레이터</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #1a1c1a; /* 어두운 시커 스톤/프루아 패드 테마 */
+            color: #d1d5db;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+            touch-action: none; /* 모바일 스와이프 방지 */
+        }
+        
+        h1 {
+            margin: 15px 0 5px 0;
+            color: #f1c40f;
+            text-shadow: 0 0 10px rgba(241, 196, 15, 0.5);
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #2ecc71;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            text-shadow: 0 0 5px rgba(46, 204, 113, 0.5);
+        }
+
+        #game-container {
+            position: relative;
+            width: 95%;
+            max-width: 800px;
+            display: flex;
+            justify-content: center;
+            border-radius: 12px;
+            padding: 4px;
+            background: linear-gradient(45deg, #102a1d, #27ae60, #102a1d);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.8);
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 8/5;
+            background-color: #4b7b3b; /* 기본 풀밭 */
+            border-radius: 8px;
+            cursor: crosshair;
+            display: block;
+        }
+
+        .instructions {
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            max-width: 800px;
+            width: 90%;
+            box-sizing: border-box;
+        }
+        .highlight { color: #f1c40f; font-weight: bold; }
+        .highlight-green { color: #2ecc71; font-weight: bold; text-shadow: 0 0 5px rgba(46, 204, 113, 0.6); }
+
+    </style>
+</head>
+<body>
+
+    <h1>TEARS OF THE KINGDOM</h1>
+    <div class="subtitle">울트라핸드 시뮬레이터</div>
+    
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+    </div>
+
+    <div class="instructions">
+        <p><span class="highlight">이동:</span> 화면의 빈 공간(잔디나 통나무)을 터치하거나 계속 누른 채로 드래그하여 이동하세요.</p>
+        <p><span class="highlight-green">울트라핸드:</span> 통나무를 마우스(터치)로 잡고 원하는 곳으로 옮기세요!</p>
+        <p>목표: 물에 빠지지 않게 통나무로 징검다리를 만들어 <span class="highlight">황금 트라이포스</span>에 도달하세요.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 게임 변수
+        let time = 0; // 애니메이션용 시간 변수
+        let gameActive = true;
+        let message = "";
+        let messageTimer = 0;
+
+        // 플레이어 (링크)
+        const player = {
+            x: 50, y: 230, w: 24, h: 24,
+            speed: 3.5, color: '#27ae60',
+            facing: 'down',
+            targetX: 62, targetY: 242 // 이동 목표 좌표 (초기엔 플레이어 중심점)
+        };
+
+        // 강 (장애물)
+        const river = { x: 250, y: 0, w: 300, h: 500 };
+
+        // 통나무 배열 (울트라핸드로 조작할 오브젝트들)
+        let logs = [
+            { x: 120, y: 50, w: 40, h: 120, isDragging: false },
+            { x: 120, y: 200, w: 40, h: 120, isDragging: false },
+            { x: 120, y: 350, w: 40, h: 120, isDragging: false },
+            { x: 30, y: 50, w: 120, h: 40, isDragging: false },
+            { x: 30, y: 400, w: 120, h: 40, isDragging: false }
+        ];
+
+        // 목표 지점 (트라이포스)
+        const goal = { x: 650, y: 220, w: 60, h: 60 };
+
+        // 잔디 텍스처 파티클 (렌더링 최적화를 위해 미리 생성)
+        const grassParticles = [];
+        for(let i = 0; i < 200; i++) {
+            grassParticles.push({
+                x: Math.random() * 800,
+                y: Math.random() * 500,
+                size: Math.random() * 3 + 1,
+                color: `rgba(40, 80, 30, ${Math.random() * 0.3})`
+            });
+        }
+
+        // 마우스 및 터치 (울트라핸드 & 이동 로직)
+        const mouse = { x: 0, y: 0, isDown: false };
+        let draggedLog = null;
+        let dragOffsetX = 0; let dragOffsetY = 0;
+
+        function getPos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let clientX = evt.clientX; let clientY = evt.clientY;
+            if (evt.touches && evt.touches.length > 0) {
+                clientX = evt.touches[0].clientX; clientY = evt.touches[0].clientY;
+            }
+            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        }
+
+        function handleStart(e) {
+            if (e.cancelable) e.preventDefault();
+            const pos = getPos(e);
+            mouse.isDown = true; mouse.x = pos.x; mouse.y = pos.y;
+
+            // 충돌 감지를 뒤에서부터(가장 위에 있는 것부터) 수행
+            let touchedLog = false;
+            for (let i = logs.length - 1; i >= 0; i--) {
+                let log = logs[i];
+                if (mouse.x > log.x && mouse.x < log.x + log.w &&
+                    mouse.y > log.y && mouse.y < log.y + log.h) {
+                    draggedLog = log;
+                    log.isDragging = true;
+                    dragOffsetX = mouse.x - log.x;
+                    dragOffsetY = mouse.y - log.y;
+                    
+                    // 잡은 통나무를 배열 맨 끝으로 이동 (맨 위에 렌더링되도록)
+                    logs.push(logs.splice(i, 1)[0]);
+                    touchedLog = true;
+                    break;
+                }
+            }
+
+            // 통나무를 터치하지 않았다면, 터치한 위치로 플레이어 이동 설정
+            if (!touchedLog) {
+                player.targetX = mouse.x;
+                player.targetY = mouse.y;
+            }
+        }
+
+        function handleMove(e) {
+            if (e.cancelable) e.preventDefault(); 
+            const pos = getPos(e);
+            mouse.x = pos.x; mouse.y = pos.y;
+
+            if (draggedLog) {
+                draggedLog.x = mouse.x - dragOffsetX;
+                draggedLog.y = mouse.y - dragOffsetY;
+            } else if (mouse.isDown) {
+                // 빈 공간을 드래그하면 플레이어의 목표 좌표를 계속 갱신 (손가락 따라가기)
+                player.targetX = mouse.x;
+                player.targetY = mouse.y;
+            }
+        }
+
+        function handleEnd(e) {
+            mouse.isDown = false;
+            if (draggedLog) {
+                draggedLog.isDragging = false;
+                draggedLog = null;
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('touchstart', handleStart, {passive: false});
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('touchmove', handleMove, {passive: false});
+        window.addEventListener('mouseup', handleEnd);
+        window.addEventListener('touchend', handleEnd);
+
+        // AABB 충돌 체크
+        function isColliding(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.w &&
+                   rect1.x + rect1.w > rect2.x &&
+                   rect1.y < rect2.y + rect2.h &&
+                   rect1.y + rect1.h > rect2.y;
+        }
+
+        function resetPlayer(msg) {
+            message = msg;
+            messageTimer = 120; // 2초간 메시지 표시 (60fps 기준)
+            player.x = 50;
+            player.y = 230;
+            player.targetX = 50 + player.w / 2;
+            player.targetY = 230 + player.h / 2;
+        }
+
+        function update() {
+            time += 0.05;
+
+            if (!gameActive) return;
+
+            // 터치 목표 지점으로 플레이어 부드럽게 이동
+            let pCenterX = player.x + player.w / 2;
+            let pCenterY = player.y + player.h / 2;
+            let dx = player.targetX - pCenterX;
+            let dy = player.targetY - pCenterY;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist > player.speed) {
+                player.x += (dx / dist) * player.speed;
+                player.y += (dy / dist) * player.speed;
+                
+                // 이동 방향 설정 (애니메이션용)
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    player.facing = dx > 0 ? 'right' : 'left';
+                } else {
+                    player.facing = dy > 0 ? 'down' : 'up';
+                }
+            }
+
+            // 화면 밖으로 못 나가게 제한
+            if (player.x < 0) player.x = 0;
+            if (player.y < 0) player.y = 0;
+            if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
+            if (player.y + player.h > canvas.height) player.y = canvas.height - player.h;
+
+            // 플레이어가 물에 빠졌는지 확인
+            let inWater = isColliding(player, river);
+            let onLog = false;
+
+            if (inWater) {
+                for (let log of logs) {
+                    if (isColliding(player, log)) {
+                        onLog = true;
+                        break;
+                    }
+                }
+                // 물 위지만 통나무 위에 없다면 익사 처리
+                if (!onLog) {
+                    resetPlayer("앗! 물에 빠졌습니다!");
+                }
+            }
+
+            // 골인 확인
+            if (isColliding(player, goal)) {
+                gameActive = false;
+                setTimeout(() => {
+                    alert("축하합니다! 사당에 도달했습니다!");
+                    location.reload();
+                }, 100);
+            }
+        }
+
+        function draw() {
+            // 1. 배경 (잔디밭)
+            ctx.fillStyle = '#558b2f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 잔디 디테일
+            grassParticles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 2. 강물 (애니메이션)
+            ctx.fillStyle = '#1e88e5'; // 기본 강물 색상
+            ctx.fillRect(river.x, river.y, river.w, river.h);
+            
+            // 흐르는 물결 효과
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            for (let i = 0; i < river.h; i += 20) {
+                let waveY = (i + time * 20) % river.h;
+                let waveX = river.x + Math.sin(time * 2 + i) * 15;
+                ctx.beginPath();
+                ctx.roundRect(waveX + 10, waveY, river.w - 40, 6, 3);
+                ctx.fill();
+            }
+
+            // 강둑 그림자
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.fillRect(river.x, 0, 10, river.h);
+            ctx.fillRect(river.x + river.w - 10, 0, 10, river.h);
+
+            // 3. 목표 (황금 트라이포스)
+            let glow = Math.abs(Math.sin(time * 3)) * 10;
+            ctx.save();
+            ctx.shadowColor = '#f1c40f';
+            ctx.shadowBlur = 10 + glow;
+            ctx.fillStyle = '#f1c40f';
+            
+            // 위쪽 삼각형
+            ctx.beginPath();
+            ctx.moveTo(goal.x + goal.w/2, goal.y + 10);
+            ctx.lineTo(goal.x + 10, goal.y + goal.h - 10);
+            ctx.lineTo(goal.x + goal.w - 10, goal.y + goal.h - 10);
+            ctx.fill();
+            
+            // 안쪽 구멍 (역삼각형)
+            ctx.fillStyle = '#558b2f'; // 바닥색
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.moveTo(goal.x + goal.w/2, goal.y + goal.h - 10);
+            ctx.lineTo(goal.x + goal.w/4 + 5, goal.y + goal.h/2 + 5);
+            ctx.lineTo(goal.x + goal.w*0.75 - 5, goal.y + goal.h/2 + 5);
+            ctx.fill();
+            ctx.restore();
+
+            // 4. 통나무 그리기 (나무 질감 및 그림자)
+            logs.forEach(log => {
+                ctx.save();
+                
+                // 그림자 (들고 있을 때 띄워진 느낌)
+                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                if (log.isDragging) {
+                    ctx.fillRect(log.x + 15, log.y + 15, log.w, log.h);
+                } else {
+                    ctx.fillRect(log.x + 5, log.y + 5, log.w, log.h);
+                }
+
+                // 베이스 나무색
+                ctx.fillStyle = '#8d6e63';
+                ctx.fillRect(log.x, log.y, log.w, log.h);
+                
+                // 나무 결 디테일
+                ctx.strokeStyle = '#5d4037';
+                ctx.lineWidth = 2;
+                for(let i=10; i<log.w; i+=15) {
+                    ctx.beginPath(); ctx.moveTo(log.x + i, log.y); ctx.lineTo(log.x + i, log.y + log.h); ctx.stroke();
+                }
+                for(let i=10; i<log.h; i+=15) {
+                    ctx.beginPath(); ctx.moveTo(log.x, log.y + i); ctx.lineTo(log.x + log.w, log.y + i); ctx.stroke();
+                }
+
+                // 울트라핸드 이펙트 (네온 초록색 테두리)
+                if (log.isDragging) {
+                    ctx.strokeStyle = '#2ecc71';
+                    ctx.lineWidth = 4;
+                    ctx.shadowColor = '#2ecc71';
+                    ctx.shadowBlur = 15;
+                    ctx.strokeRect(log.x, log.y, log.w, log.h);
+                    
+                    // 들고 있을 때 살짝 초록빛 코팅
+                    ctx.fillStyle = 'rgba(46, 204, 113, 0.3)';
+                    ctx.fillRect(log.x, log.y, log.w, log.h);
+                }
+                
+                ctx.restore();
+            });
+
+            // 5. 플레이어 (링크)
+            ctx.save();
+            
+            // 이동 목표 지점 표시 (터치한 곳에 반짝이는 원)
+            let pCenterX = player.x + player.w / 2;
+            let pCenterY = player.y + player.h / 2;
+            let dist = Math.hypot(player.targetX - pCenterX, player.targetY - pCenterY);
+            if (dist > player.speed && !draggedLog) {
+                ctx.beginPath();
+                ctx.arc(player.targetX, player.targetY, 10 + Math.sin(time*15)*4, 0, Math.PI*2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // 플레이어 그림자
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.beginPath();
+            ctx.ellipse(player.x + player.w/2, player.y + player.h, player.w/1.5, player.h/3, 0, 0, Math.PI*2);
+            ctx.fill();
+
+            // 몸통 (초록 튜닉)
+            ctx.fillStyle = '#27ae60';
+            ctx.beginPath();
+            ctx.roundRect(player.x, player.y + 8, player.w, player.h - 8, 4);
+            ctx.fill();
+
+            // 머리 (금발/살구색)
+            ctx.fillStyle = '#f39c12';
+            ctx.beginPath();
+            ctx.arc(player.x + player.w/2, player.y + 8, 8, 0, Math.PI*2);
+            ctx.fill();
+
+            // 방향에 따른 디테일 (단순화)
+            ctx.fillStyle = '#e74c3c'; // 벨트 또는 방패 포인트
+            if(player.facing === 'down') {
+                ctx.fillRect(player.x + 6, player.y + 14, 12, 4);
+            }
+            ctx.restore();
+
+            // 6. 울트라핸드 연결 광선 (플레이어 -> 잡고 있는 통나무)
+            if (draggedLog) {
+                ctx.save();
+                let startX = player.x + player.w / 2;
+                let startY = player.y + player.h / 2;
+                let endX = draggedLog.x + draggedLog.w / 2;
+                let endY = draggedLog.y + draggedLog.h / 2;
+
+                // 마법 광선 (구불구불한 빔)
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                
+                let segments = 5;
+                for(let i=1; i<=segments; i++) {
+                    let t = i / segments;
+                    let curX = startX + (endX - startX) * t;
+                    let curY = startY + (endY - startY) * t;
+                    
+                    // 시간과 길이에 따라 구불거리는 효과
+                    let offset = Math.sin(time * 10 + i) * 10;
+                    if(i < segments) {
+                        ctx.lineTo(curX + offset, curY + offset);
+                    } else {
+                        ctx.lineTo(endX, endY);
+                    }
+                }
+
+                ctx.strokeStyle = '#2ecc71';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = '#2ecc71';
+                ctx.shadowBlur = 10;
+                ctx.stroke();
+
+                // 연결부 입자 효과
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(startX, startY, 4, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(endX, endY, 6, 0, Math.PI*2); ctx.fill();
+                
+                ctx.restore();
+            }
+
+            // 시스템 메시지 (물에 빠졌을 때 등)
+            if (messageTimer > 0) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(canvas.width/2 - 150, canvas.height/2 - 30, 300, 60);
+                
+                ctx.fillStyle = '#e74c3c';
+                ctx.font = 'bold 24px "Noto Sans KR"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 5;
+                ctx.fillText(message, canvas.width/2, canvas.height/2);
+                ctx.shadowBlur = 0; // 초기화
+                
+                messageTimer--;
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // 게임 시작
+        loop();
+
+    </script>
+</body>
+</html>
